@@ -16,7 +16,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -24,6 +26,7 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import {
     ChannelListItemComponent,
     ChannelListSkeletonComponent,
+    EpgMappingDialogComponent,
     ResizableDirective,
 } from '@iptvnator/ui/components';
 import {
@@ -32,6 +35,7 @@ import {
     SettingsStore,
 } from '@iptvnator/services';
 import {
+    buildStalkerEpgMappingKey,
     Channel,
     EpgItem,
     EpgProgram,
@@ -51,6 +55,7 @@ import {
     WebPlayerViewComponent,
 } from '@iptvnator/ui/playback';
 import { LiveEpgPanelSummary } from '@iptvnator/ui/shared-portals';
+import { EpgRuntimeBridgeService } from '@iptvnator/epg/data-access';
 import {
     LiveLayoutSidebarStateService,
     PORTAL_PLAYER,
@@ -91,6 +96,7 @@ const FULL_LIST_RENDER_CHUNK = 100;
         EpgTimelineComponent,
         MatButtonModule,
         MatIconModule,
+        MatMenuModule,
         MatProgressSpinnerModule,
         MatTooltipModule,
         NgTemplateOutlet,
@@ -105,6 +111,8 @@ const FULL_LIST_RENDER_CHUNK = 100;
 export class StalkerLiveStreamLayoutComponent implements OnDestroy {
     readonly stalkerStore = inject(StalkerStore);
     private readonly playlistService = inject(PlaylistsService);
+    private readonly dialog = inject(MatDialog);
+    private readonly epgBridge = inject(EpgRuntimeBridgeService);
     private readonly runtime = inject(RuntimeCapabilitiesService);
     private readonly settingsStore = inject(SettingsStore);
     private readonly portalPlayer = inject(PORTAL_PLAYER);
@@ -228,8 +236,15 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
 
     readonly selectedChannelId = this.stalkerStore.selectedItvId;
     protected readonly normalizeStalkerEntityId = normalizeStalkerEntityId;
+
+    /** Context menu (Map EPG) */
+    readonly contextMenuTrigger =
+        viewChild.required<MatMenuTrigger>('contextMenuTrigger');
+    readonly contextMenuChannel = signal<StalkerItvChannel | null>(null);
+    readonly contextMenuPosition = signal({ x: '0px', y: '0px' });
     readonly isElectron = this.runtime.isElectron;
     readonly supportsEpg = this.runtime.supportsEpg;
+    readonly supportsEpgMapping = this.runtime.supportsEpgMapping;
     readonly openStreamOnDoubleClick = computed(() =>
         this.settingsStore.openStreamOnDoubleClick()
     );
@@ -411,6 +426,15 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
             }
 
             this.syncBulkEpgPreviews(channels);
+
+            // Overlay manual EPG mappings for the rendered channels; the
+            // store dedupes per channel id, so this is cheap on rerenders.
+            if (this.supportsEpgMapping && channels.length > 0) {
+                const channelIds = channels.map((channel) => channel.id);
+                untracked(() =>
+                    void this.stalkerStore.applyMappedItvEpg(channelIds)
+                );
+            }
         });
 
         effect(() => {
@@ -705,6 +729,94 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
 
     onLiveEpgSelectedDateChange(selectedDate: string): void {
         this.selectedLiveEpgDate.set(selectedDate);
+    }
+
+    // ── Context menu (Map EPG) ─────────────────────────────────────
+
+    onChannelContextMenu(channel: StalkerItvChannel, event: MouseEvent): void {
+        this.contextMenuChannel.set(channel);
+        this.contextMenuPosition.set({
+            x: `${event.clientX}px`,
+            y: `${event.clientY}px`,
+        });
+
+        const trigger = this.contextMenuTrigger();
+        if (trigger.menuOpen) {
+            trigger.closeMenu();
+        }
+
+        queueMicrotask(() => {
+            this.contextMenuTrigger().openMenu();
+        });
+    }
+
+    async openEpgMapping(): Promise<void> {
+        const channel = this.contextMenuChannel();
+        if (!channel) {
+            return;
+        }
+
+        this.contextMenuTrigger().closeMenu();
+        const playlistId = this.stalkerStore.currentPlaylist()?._id;
+        const channelId = normalizeStalkerEntityId(channel.id);
+        if (!playlistId || !channelId) {
+            return;
+        }
+
+        const channelKey = buildStalkerEpgMappingKey(
+            String(playlistId),
+            channelId
+        );
+        const mappingBefore = await this.epgBridge
+            .getEpgMapping(channelKey)
+            .catch(() => null);
+
+        EpgMappingDialogComponent.open(this.dialog, {
+            channelKey,
+            channelName: channel.o_name || channel.name || channelId,
+            playlistId: String(playlistId),
+        })
+            .afterClosed()
+            .subscribe(() => {
+                void this.refreshEpgAfterMappingChange(
+                    channel,
+                    channelKey,
+                    mappingBefore?.epgChannelId ?? null
+                );
+            });
+    }
+
+    /**
+     * Reload EPG state when the dialog actually changed the mapping —
+     * covers both save and removal; a plain cancel skips the reload.
+     */
+    private async refreshEpgAfterMappingChange(
+        channel: StalkerItvChannel,
+        channelKey: string,
+        epgChannelIdBefore: string | null
+    ): Promise<void> {
+        const mappingAfter = await this.epgBridge
+            .getEpgMapping(channelKey)
+            .catch(() => null);
+        if ((mappingAfter?.epgChannelId ?? null) === epgChannelIdBefore) {
+            return;
+        }
+
+        this.stalkerStore.clearBulkItvEpgCache();
+        const selectedId = this.selectedChannelId();
+        const selected = selectedId
+            ? this.channels().find(
+                  (item) =>
+                      normalizeStalkerEntityId(item.id) ===
+                      normalizeStalkerEntityId(selectedId)
+              )
+            : null;
+        await this.loadEpgForChannel(selected ?? channel);
+        // Use the unfiltered list so an active search filter cannot drop
+        // the playing channel's mapping override.
+        await this.stalkerStore.applyMappedItvEpg(
+            this.channels().map((item) => item.id)
+        );
     }
 
     private async loadEpgForChannel(item: StalkerItvChannel) {

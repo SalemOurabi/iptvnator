@@ -453,6 +453,7 @@
     },
     "EMBEDDED_MPV": {
         "PLAYER": {
+            "BACK": "Zurück",
             "RETRY": "Erneut versuchen",
             "STALLED": "Der Start dieses Streams dauert länger als erwartet.",
             "PLAYBACK_FAILED": "Die Wiedergabe mit eingebettetem MPV ist fehlgeschlagen.",
@@ -569,6 +570,7 @@
         "REMOVE_FAVORITE": "Aus Favoritenliste entfernen",
         "ADD_FAVORITE": "Zu Favoriten hinzufügen",
         "SHOW_DETAILS": "Senderdetails anzeigen",
+        "MAP_EPG": "EPG-Kanal zuordnen",
         "FAVORITES_UPDATED": "Favoriten wurden aktualisiert!",
         "SELECT_CHANNEL_PLAYBACK": "Bitte wählen Sie einen Sender aus, um die Wiedergabe zu starten",
         "SORT_BY": "Sortieren nach",
@@ -713,6 +715,21 @@
             "GROUP_SHORT": "Kurzsendungen",
             "GROUP_EXPAND": "anzeigen ›"
         }
+    },
+    "EPG_MAPPING_DIALOG": {
+        "TITLE": "EPG-Kanal zuordnen",
+        "SUBTITLE": "EPG-Kanal für \"{{channelName}}\" manuell auswählen",
+        "SEARCH_PLACEHOLDER": "EPG-Kanäle durchsuchen...",
+        "CURRENT_MAPPING": "Aktuelle Zuordnung",
+        "NO_MAPPING": "Keine EPG-Zuordnung festgelegt",
+        "SAVE": "Zuordnung speichern",
+        "REMOVE": "Zuordnung entfernen",
+        "CLOSE": "Schließen",
+        "NO_RESULTS": "Keine EPG-Kanäle gefunden",
+        "SEARCH_HINT": "Mindestens {{min}} Zeichen zum Suchen eingeben",
+        "SAVED": "EPG-Zuordnung gespeichert",
+        "REMOVED": "EPG-Zuordnung entfernt",
+        "SAVE_FAILED": "EPG-Zuordnung konnte nicht aktualisiert werden"
     },
     "LANGUAGES": {
         "ARABIC": "العربية",
