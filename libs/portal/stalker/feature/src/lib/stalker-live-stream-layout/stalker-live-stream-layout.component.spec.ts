@@ -17,10 +17,7 @@ import {
     ResizableDirective,
 } from '@iptvnator/portal/shared/util';
 import { StalkerStore } from '@iptvnator/portal/stalker/data-access';
-import {
-    EpgListViewComponent,
-    EpgTimelineComponent,
-} from '@iptvnator/ui/epg';
+import { EpgListViewComponent, EpgTimelineComponent } from '@iptvnator/ui/epg';
 import { AudioPlayerComponent } from '@iptvnator/ui/playback';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ChannelListItemComponent } from '@iptvnator/ui/components';
@@ -200,9 +197,9 @@ describe('StalkerLiveStreamLayoutComponent', () => {
         loaded: number;
         total: number;
     } | null>(null);
-    const itvFullChannelList = signal<
-        ReturnType<typeof defaultItvChannels>
-    >([]);
+    const itvFullChannelList = signal<ReturnType<typeof defaultItvChannels>>(
+        []
+    );
     const itvSelectedCategoryFromCache = signal(false);
     const isPaginatedContentLoading = signal(false);
 
@@ -404,9 +401,7 @@ describe('StalkerLiveStreamLayoutComponent', () => {
                     useValue: {
                         supportsEpgMapping: false,
                         getEpgMapping: jest.fn().mockResolvedValue(null),
-                        getEpgMappingsBatch: jest
-                            .fn()
-                            .mockResolvedValue(null),
+                        getEpgMappingsBatch: jest.fn().mockResolvedValue(null),
                     },
                 },
             ],
@@ -500,7 +495,9 @@ describe('StalkerLiveStreamLayoutComponent', () => {
             fixture.nativeElement.querySelector('app-web-player-view')
         ).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.epg')).toBeNull();
-        expect(fixture.nativeElement.querySelector('app-epg-timeline')).toBeNull();
+        expect(
+            fixture.nativeElement.querySelector('app-epg-timeline')
+        ).toBeNull();
     });
 
     it('restores the collapsed live EPG panel state after embedded playback starts', async () => {
@@ -747,6 +744,35 @@ describe('StalkerLiveStreamLayoutComponent', () => {
         expect(
             component.filteredChannels().map((channel) => channel.name)
         ).toEqual(['CNN International']);
+    });
+
+    it('keeps loaded censored-category channels in full-list search results', () => {
+        itvFullListActive.set(true);
+        itvSelectedCategoryFromCache.set(false);
+        itvFullChannelList.set([
+            {
+                id: '1',
+                cmd: 'ffrt4://itv/1',
+                name: 'Public News',
+                o_name: 'Public News',
+                logo: '',
+            },
+        ]);
+        itvChannels.set([
+            {
+                id: 'adult-1',
+                cmd: 'ffrt4://itv/adult-1',
+                name: 'Censored Match',
+                o_name: 'Censored Match',
+                logo: '',
+            },
+        ]);
+        searchPhrase.set('censored');
+        fixture.detectChanges();
+
+        expect(
+            component.filteredChannels().map((channel) => channel.name)
+        ).toEqual(['Censored Match']);
     });
 
     it('grows the render window to include a channel selected beyond it (remote/numeric nav)', async () => {
@@ -1027,7 +1053,9 @@ describe('StalkerLiveStreamLayoutComponent', () => {
         expect(ensureBulkItvEpg).not.toHaveBeenCalled();
         expect(fetchChannelEpg).not.toHaveBeenCalled();
         expect(portalPlayer.openResolvedPlayback).not.toHaveBeenCalled();
-        expect(fixture.nativeElement.querySelector('app-epg-timeline')).toBeNull();
+        expect(
+            fixture.nativeElement.querySelector('app-epg-timeline')
+        ).toBeNull();
         expect(
             fixture.nativeElement.querySelector('app-audio-player')
         ).not.toBeNull();

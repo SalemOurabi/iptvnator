@@ -7,7 +7,6 @@ import {
     defaultStalkerMacAddress,
     expect,
     expectWorkspaceSearchScope,
-    expectWorkspaceSearchStatus,
     fillWorkspaceSearch,
     goToDashboard,
     importM3uPlaylistFromNativeDialog,
@@ -987,7 +986,7 @@ test.describe('Electron Workspace Search', () => {
         }
     });
 
-    test('@search @stalker shows loaded-only scope and filters channels on ITV routes', async ({
+    test('@search @stalker filters the complete cached channel list on ITV routes', async ({
         dataDir,
         request,
     }) => {
@@ -1011,6 +1010,14 @@ test.describe('Electron Workspace Search', () => {
                 /\/workspace\/stalker\/[^/]+\/itv$/
             );
 
+            await expect(
+                app.mainWindow
+                    .locator(
+                        `app-workspace-context-panel .category-item[data-category-id="${sample.categoryId}"]:visible`
+                    )
+                    .locator('.item-count')
+            ).toBeVisible({ timeout: 20000 });
+
             await clickCategoryById(app.mainWindow, sample.categoryId);
             await expect(
                 channelItemByTitle(app.mainWindow, sample.targetTitle).first()
@@ -1030,26 +1037,11 @@ test.describe('Electron Workspace Search', () => {
                 app.mainWindow,
                 `Live TV / ${sample.categoryName}`
             );
-            await expectWorkspaceSearchStatus(
-                app.mainWindow,
-                'Loaded channels only'
-            );
-            await waitForPortalDebugEvent(app.mainWindow, {
-                provider: 'stalker',
-                operation: 'get_ordered_list',
-                predicate: (event) => {
-                    const requestPayload = event.request as {
-                        params?: Record<string, string | number>;
-                    };
-
-                    return (
-                        requestPayload.params?.['type'] === 'itv' &&
-                        String(requestPayload.params?.['category']) ===
-                            sample.categoryId &&
-                        requestPayload.params?.['search'] === itvQuery
-                    );
-                },
-            });
+            await expect(
+                app.mainWindow.locator(
+                    'app-workspace-shell-header .search-chip--status'
+                )
+            ).toHaveCount(0);
             await expect(
                 channelItemByTitle(app.mainWindow, sample.targetTitle).first()
             ).toBeVisible();

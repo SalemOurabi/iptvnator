@@ -29,7 +29,7 @@ Stalker support covers:
 
 ## Routing Structure
 
-Primary route tree lives in `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-feature.routes.ts`.
+Primary route tree lives in `libs/portal/stalker/feature/src/lib/stalker-feature.routes.ts`.
 
 - `/stalker/:id/vod`
 - `/stalker/:id/series`
@@ -45,30 +45,30 @@ Primary route tree lives in `/Users/4gray/Code/iptvnator/libs/portal/stalker/fea
 1. Angular Stalker screens call methods/resources in `StalkerStore`.
 2. `StalkerStore` builds request params based on selected content type and current view state.
 3. Requests go through `DataService.sendIpcEvent(STALKER_REQUEST, ...)` or `StalkerSessionService` (full portal auth).
-4. Electron main process handles `STALKER_REQUEST` in `/Users/4gray/Code/iptvnator/apps/electron-backend/src/app/events/stalker.events.ts`.
+4. Electron main process handles `STALKER_REQUEST` in `apps/electron-backend/src/app/events/stalker.events.ts`.
 5. Axios calls Stalker `load.php` API with required headers/cookies and returns normalized payloads to renderer.
 
 ## Main UI Components
 
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-main-container.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-main-container.component.ts`
     - Category + content layout for `vod` and `series`
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-live-stream-layout/stalker-live-stream-layout.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-live-stream-layout/stalker-live-stream-layout.component.ts`
     - ITV live playback, radio playback, channel/station navigation, EPG panel integration
-- `/Users/4gray/Code/iptvnator/libs/ui/playback/src/lib/audio-player/audio-player.component.ts`
+- `libs/ui/playback/src/lib/audio-player/audio-player.component.ts`
     - Shared inline audio player used by M3U radio channels and Stalker radio stations
-- `/Users/4gray/Code/iptvnator/libs/ui/components/src/lib/stalker-series-view/stalker-series-view.component.ts`
+- `libs/ui/components/src/lib/stalker-series-view/stalker-series-view.component.ts`
     - Season/episode UI for all Stalker series modes
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-favorites/stalker-favorites.component.ts`
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/recently-viewed/recently-viewed.component.ts`
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-search/stalker-search.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-favorites/stalker-favorites.component.ts`
+- `libs/portal/stalker/feature/src/lib/recently-viewed/recently-viewed.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-search/stalker-search.component.ts`
 
 ## Store and Data Flow
 
 Stalker store is now feature-composed:
 
-- Facade: `/Users/4gray/Code/iptvnator/libs/portal/stalker/data-access/src/lib/stalker.store.ts`
-- Feature slices: `/Users/4gray/Code/iptvnator/libs/portal/stalker/data-access/src/lib/stores/features/*`
-- Shared helpers: `/Users/4gray/Code/iptvnator/libs/portal/stalker/data-access/src/lib/*`
+- Facade: `libs/portal/stalker/data-access/src/lib/stalker.store.ts`
+- Feature slices: `libs/portal/stalker/data-access/src/lib/stores/features/*`
+- Shared helpers: `libs/portal/stalker/data-access/src/lib/*`
 
 Important store responsibilities:
 
@@ -190,14 +190,19 @@ list:
   screen (radio, another portal), and the legacy paged branch appends at
   `pageIndex > 1`, so an unrelated load completing duplicated the visible page
   (colliding `track item.id` → NG0955). The `isCurrentRequest` guard is scoped
-  the same way.
+  the same way. `getChannels()` reads the keyed map directly and is deliberately
+  non-reactive; consumers establish only their portal's dependency through
+  `versionFor(playlist)`.
 - Integration: the `getContentResource` loader in
   `with-stalker-content.feature.ts` serves ITV categories from the cache when
   ready (local `tv_genre_id` filtering via `filterItvChannelsByGenre`,
   `hasMoreChannels=false`), and otherwise runs the legacy paged fetch while
   `ensureLoaded()` fills the cache in the background; the resource re-fires
-  via the `cacheVersion` signal once the full list arrives.
-- UI: `StalkerLiveStreamLayoutComponent` windows the rendered list
+  via the `cacheVersion` signal once the full list arrives. Derived cache
+  selectors and the public content mutations live separately in
+  `with-stalker-content-api.feature.ts`.
+- UI: `stalker-live-channel-browser.ts` owns full-list filtering, de-duplication
+  and the bounded render window used by `StalkerLiveStreamLayoutComponent`
   (100-item chunks extended by the existing scroll handler) so multi-thousand
   channel lists do not blow up the DOM; the header count and search cover the
   whole category; a refresh button re-loads the list in place; a progress line
@@ -212,16 +217,20 @@ list:
   (`itvFullListLoading()` or `isPaginatedContentLoading()`), not merely an empty
   channel list; an empty result once loading has settled is an empty category
   and renders `PORTALS.NO_CHANNELS_IN_CATEGORY`, not a spinner.
-- Search: with the cache active, the header search spans the ENTIRE portal
-  (all genres) — filtering the store's `itvFullChannelList`, not just the
+- Search: with the cache active, the header search spans the entire bulk list
+  (all non-censored genres) — filtering the store's `itvFullChannelList`, not just the
   selected category — so searching "CNN" while a "Sports" genre is selected
   still finds it; clearing the term returns to the selected category. The
-  workspace shell drops the `degraded-loaded-only` / "loaded only" status for
-  Stalker ITV once `itvFullListActive`; radio (no full-list cache) always keeps
-  the loaded-only hint (`workspace-shell-search.service.ts`).
+  only exception is a censored genre omitted by `get_all_channels`: its
+  currently loaded paged channels are merged into the cached search source, so
+  entering a search never makes a visible adult channel disappear. Because
+  unseen pages from that genre remain unknown, the workspace shell keeps its
+  `degraded-loaded-only` hint there. It drops the hint for cache-backed ITV
+  categories once `itvFullListActive`; radio (no full-list cache) always keeps
+  it (`workspace-shell-search.service.ts`).
 - Windowed selection: remote channel-up/down and numeric select operate over
-  the full filtered category, so the render window (`renderLimit`) grows to
-  include a selection beyond it (`ensureChannelWithinRenderWindow`) instead of
+  the full filtered category, so the browser's render window grows to
+  include a selection beyond it (`ensureChannelIsRendered`) instead of
   drifting off-screen.
 - Category count badges: the context panel shows per-genre channel counts on
   Stalker **Live TV** categories (like Xtream/M3U), fed by the store computed
@@ -302,8 +311,8 @@ Series inline playback behavior is shared across all three modes:
 
 Core decision logic and normalization are centralized in:
 
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/data-access/src/lib/stalker-vod.utils.ts`
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/data-access/src/lib/models/*.ts`
+- `libs/portal/stalker/data-access/src/lib/stalker-vod.utils.ts`
+- `libs/portal/stalker/data-access/src/lib/models/*.ts`
 
 ## Favorites and Recently Viewed
 
@@ -318,10 +327,10 @@ Current implementation is shared via Stalker-specific helpers:
 
 Where this is used:
 
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-favorites/stalker-favorites.component.ts`
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/recently-viewed/recently-viewed.component.ts`
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-search/stalker-search.component.ts`
-- `/Users/4gray/Code/iptvnator/libs/ui/components/src/lib/stalker-favorites-button/stalker-favorites-button.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-favorites/stalker-favorites.component.ts`
+- `libs/portal/stalker/feature/src/lib/recently-viewed/recently-viewed.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-search/stalker-search.component.ts`
+- `libs/ui/components/src/lib/stalker-favorites-button/stalker-favorites-button.component.ts`
 
 Navigation rule to preserve:
 
@@ -369,7 +378,7 @@ Import rule:
 
 Stalker live remote control is implemented in:
 
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/feature/src/lib/stalker-live-stream-layout/stalker-live-stream-layout.component.ts`
+- `libs/portal/stalker/feature/src/lib/stalker-live-stream-layout/stalker-live-stream-layout.component.ts`
 
 Supported today:
 
@@ -406,7 +415,7 @@ This reduces duplicate UI logic across portal types and keeps compatibility beha
 
 Focused regression tests for Stalker VOD mode branching live in:
 
-- `/Users/4gray/Code/iptvnator/libs/portal/stalker/data-access/src/lib/stalker-vod.utils.spec.ts`
+- `libs/portal/stalker/data-access/src/lib/stalker-vod.utils.spec.ts`
 
 Covered scenarios include:
 

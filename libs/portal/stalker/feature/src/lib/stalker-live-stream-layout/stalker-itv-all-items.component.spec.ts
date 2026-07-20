@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { StalkerItvChannel } from '@iptvnator/portal/stalker/data-access';
 import { StalkerItvAllItemsComponent } from './stalker-itv-all-items.component';
 
@@ -20,10 +20,7 @@ describe('StalkerItvAllItemsComponent', () => {
 
     beforeEach(async () => {
         await TestBed.configureTestingModule({
-            imports: [
-                StalkerItvAllItemsComponent,
-                TranslateModule.forRoot(),
-            ],
+            imports: [StalkerItvAllItemsComponent, TranslateModule.forRoot()],
         }).compileComponents();
 
         fixture = TestBed.createComponent(StalkerItvAllItemsComponent);
@@ -38,12 +35,31 @@ describe('StalkerItvAllItemsComponent', () => {
         expect(fixture.nativeElement.querySelectorAll('mat-card')).toHaveLength(
             25
         );
-        expect(fixture.nativeElement.querySelector('mat-paginator')).toBeTruthy();
+        expect(
+            fixture.nativeElement.querySelector('mat-paginator')
+        ).toBeTruthy();
         expect(
             fixture.nativeElement
                 .querySelector('.category-subtitle')
                 ?.textContent?.trim()
         ).toContain('60');
+    });
+
+    it('translates the item-count label', () => {
+        const translate = TestBed.inject(TranslateService);
+        translate.setTranslation('en', {
+            PORTALS: { ITEM: 'entry', ITEMS: 'entries' },
+        });
+        translate.use('en');
+        fixture.componentRef.setInput('channels', buildChannels(2));
+        fixture.detectChanges();
+
+        expect(
+            fixture.nativeElement
+                .querySelector('.category-subtitle')
+                ?.textContent?.replace(/\s+/g, ' ')
+                .trim()
+        ).toBe('2 entries');
     });
 
     it('slices the next page on paginator change without touching the source', () => {
@@ -75,9 +91,9 @@ describe('StalkerItvAllItemsComponent', () => {
         fixture.detectChanges();
 
         expect(component.pageIndex()).toBe(0);
-        expect(
-            component.pagedGridItems().map((item) => item['name'])
-        ).toEqual(['Needle TV']);
+        expect(component.pagedGridItems().map((item) => item['name'])).toEqual([
+            'Needle TV',
+        ]);
     });
 
     it('maps the stalker logo to stream_icon and drops null is_series for the grid', () => {

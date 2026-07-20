@@ -50,7 +50,9 @@ function pageOf(items: unknown[], totalItems: number, pageSize = 14) {
     };
 }
 
-const UNSUPPORTED_ACTION = { js: { error: 'Unknown action: get_all_channels' } };
+const UNSUPPORTED_ACTION = {
+    js: { error: 'Unknown action: get_all_channels' },
+};
 
 async function flushMicrotasks(times = 5): Promise<void> {
     for (let index = 0; index < times; index += 1) {
@@ -295,10 +297,7 @@ describe('StalkerItvCacheService', () => {
     it('deduplicates channels returned across crawl pages (portal ignoring the page param)', async () => {
         const samePage = () =>
             pageOf(
-                [
-                    channel('1', 'News One', '5'),
-                    channel('2', 'Sports HD', '9'),
-                ],
+                [channel('1', 'News One', '5'), channel('2', 'Sports HD', '9')],
                 // Portal claims many items but returns the same two regardless
                 // of `p`.
                 280
@@ -329,9 +328,10 @@ describe('StalkerItvCacheService', () => {
 
         await service.ensureLoaded(PLAYLIST);
 
-        expect(
-            service.getChannels(PLAYLIST)?.map((c) => c.id)
-        ).toEqual(['1', '2']);
+        expect(service.getChannels(PLAYLIST)?.map((c) => c.id)).toEqual([
+            '1',
+            '2',
+        ]);
     });
 
     it('deduplicates concurrent load requests', async () => {

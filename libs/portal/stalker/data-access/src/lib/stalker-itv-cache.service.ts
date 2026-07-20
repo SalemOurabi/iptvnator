@@ -86,12 +86,11 @@ export class StalkerItvCacheService {
     }
 
     /** Full channel list for the portal, or null while not (yet) loaded. */
-    getChannels(playlist: PlaylistMeta | undefined): StalkerItvChannel[] | null {
+    getChannels(
+        playlist: PlaylistMeta | undefined
+    ): StalkerItvChannel[] | null {
         const key = this.keyFor(playlist);
-        if (key === null || !this.readyKeys().has(key)) {
-            return null;
-        }
-        return this.channelsByKey.get(key) ?? null;
+        return key === null ? null : (this.channelsByKey.get(key) ?? null);
     }
 
     /**

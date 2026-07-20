@@ -3,11 +3,15 @@ import { TestBed } from '@angular/core/testing';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { TranslateService } from '@ngx-translate/core';
 import { DataService } from '@iptvnator/services';
-import { PlaylistMeta, StalkerPortalActions } from '@iptvnator/shared/interfaces';
+import {
+    PlaylistMeta,
+    StalkerPortalActions,
+} from '@iptvnator/shared/interfaces';
 import { StalkerItvChannel } from '../../models';
 import { StalkerItvCacheService } from '../../stalker-itv-cache.service';
 import { StalkerSessionService } from '../../stalker-session.service';
 import { withStalkerContent } from './with-stalker-content.feature';
+import { withStalkerContentApi } from './with-stalker-content-api.feature';
 
 jest.mock('@iptvnator/portal/shared/util', () => ({
     createLogger: () => ({
@@ -52,7 +56,8 @@ const TestContentStore = signalStore(
             patchState(store, { page });
         },
     })),
-    withStalkerContent()
+    withStalkerContent(),
+    withStalkerContentApi()
 );
 
 function createDeferred<T>() {
@@ -108,7 +113,9 @@ async function waitForCondition(
  * Controllable stand-in for StalkerItvCacheService so the legacy paged flow
  * can be tested in isolation and the cache-served flow deterministically.
  */
-function createItvCacheMock(initialChannels: StalkerItvChannel[] | null = null) {
+function createItvCacheMock(
+    initialChannels: StalkerItvChannel[] | null = null
+) {
     const version = signal(0);
     let channels = initialChannels;
 
@@ -495,7 +502,12 @@ describe('withStalkerContent failure states', () => {
 describe('withStalkerContent full ITV channel list cache', () => {
     const CACHED_CHANNELS: StalkerItvChannel[] = [
         { id: '1', cmd: 'ffrt http://x/1', name: 'News One', tv_genre_id: '5' },
-        { id: '2', cmd: 'ffrt http://x/2', name: 'Sports HD', tv_genre_id: '9' },
+        {
+            id: '2',
+            cmd: 'ffrt http://x/2',
+            name: 'Sports HD',
+            tv_genre_id: '9',
+        },
         { id: '3', cmd: 'ffrt http://x/3', name: 'News Two', tv_genre_id: '5' },
     ];
 

@@ -8,7 +8,6 @@ import {
     effect,
     ElementRef,
     inject,
-    linkedSignal,
     OnDestroy,
     signal,
     untracked,
@@ -75,14 +74,12 @@ import {
     normalizeStalkerEntityId,
 } from '@iptvnator/portal/stalker/data-access';
 import { StalkerItvAllItemsComponent } from './stalker-itv-all-items.component';
+import { createStalkerLiveChannelBrowser } from './stalker-live-channel-browser';
 
 type StalkerPlayableChannel = StalkerPortalItem & {
     cmd?: string;
     has_files?: unknown;
 };
-
-/** Channels rendered per "page" when the full list is served from the cache. */
-const FULL_LIST_RENDER_CHUNK = 100;
 
 @Component({
     selector: 'app-stalker-live-stream-layout',
@@ -125,114 +122,28 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
     readonly selectedCategoryTitle = this.stalkerStore.getSelectedCategoryName;
 
     /** Channels */
-    readonly isRadioMode = computed(
-        () => this.stalkerStore.selectedContentType() === 'radio'
+    private readonly channelBrowser = createStalkerLiveChannelBrowser(
+        this.stalkerStore
     );
+    readonly isRadioMode = this.channelBrowser.isRadioMode;
     readonly itvChannels = this.stalkerStore.itvChannels;
     readonly radioChannels = this.stalkerStore.radioChannels;
-    readonly channels = computed(() =>
-        this.isRadioMode() ? this.radioChannels() : this.itvChannels()
-    );
-    readonly searchTerm = computed(() =>
-        this.stalkerStore.searchPhrase().trim().toLowerCase()
-    );
-    /** Full-list mode: the complete channel list is cached, so search covers everything. */
-    readonly isFullListMode = computed(
-        () => !this.isRadioMode() && this.stalkerStore.itvFullListActive()
-    );
-    /**
-     * True when the CURRENT category is actually served from the cache.
-     * Censored (adult) genres are excluded from `get_all_channels` on most
-     * portals, so they stay on the legacy paged flow (portal pagination,
-     * infinite scroll) even while the full-list cache is active.
-     */
-    readonly isCategoryFromCache = computed(
-        () =>
-            !this.isRadioMode() &&
-            this.stalkerStore.itvSelectedCategoryFromCache()
-    );
-    /**
-     * Channels matching the search phrase. Without a term, the current
-     * category. With a term in full-list mode, the WHOLE portal's channel list
-     * (every category) so search behaves like "search all channels"; otherwise
-     * the loaded channels of the current category.
-     */
-    readonly filteredChannels = computed(() => {
-        const term = this.searchTerm();
-        const source =
-            term && this.isFullListMode()
-                ? this.stalkerStore.itvFullChannelList()
-                : this.channels();
-
-        if (!term) {
-            return source;
-        }
-
-        return source.filter((item) =>
-            `${item.o_name ?? ''} ${item.name ?? ''}`
-                .toLowerCase()
-                .includes(term)
-        );
-    });
-    readonly isFullListLoading = computed(
-        () => !this.isRadioMode() && this.stalkerStore.itvFullListLoading()
-    );
+    readonly channels = this.channelBrowser.channels;
+    readonly searchTerm = this.channelBrowser.searchTerm;
+    readonly isFullListMode = this.channelBrowser.isFullListMode;
+    readonly isCategoryFromCache = this.channelBrowser.isCategoryFromCache;
+    readonly filteredChannels = this.channelBrowser.filteredChannels;
+    readonly isFullListLoading = this.channelBrowser.isFullListLoading;
     readonly fullListProgress = this.stalkerStore.itvFullListProgress;
     readonly itvFullChannelList = this.stalkerStore.itvFullChannelList;
-    /**
-     * All-channels grid in the main area when no category is selected yet
-     * (Xtream "All Items" parity). Falls back to the "select a category"
-     * placeholder on portals without a usable full list.
-     */
-    readonly showItvAllItems = computed(
-        () =>
-            !this.isRadioMode() &&
-            !this.stalkerStore.selectedCategoryId() &&
-            (this.stalkerStore.itvFullListActive() ||
-                this.stalkerStore.itvFullListLoading())
-    );
-    /** Windowed render limit keeps the DOM bounded for multi-thousand channel lists. */
-    private readonly renderLimit = linkedSignal({
-        source: () => ({
-            term: this.searchTerm(),
-            category: this.stalkerStore.selectedCategoryId(),
-            contentType: this.stalkerStore.selectedContentType(),
-        }),
-        computation: () => FULL_LIST_RENDER_CHUNK,
-    });
-    readonly visibleChannels = computed(() =>
-        this.isCategoryFromCache()
-            ? this.filteredChannels().slice(0, this.renderLimit())
-            : this.filteredChannels()
-    );
-    readonly totalChannelCount = computed(() => this.filteredChannels().length);
-    readonly hasMoreItems = computed(() =>
-        this.isCategoryFromCache()
-            ? this.visibleChannels().length < this.filteredChannels().length
-            : this.stalkerStore.hasMoreChannels()
-    );
+    readonly showItvAllItems = this.channelBrowser.showItvAllItems;
+    readonly visibleChannels = this.channelBrowser.visibleChannels;
+    readonly totalChannelCount = this.channelBrowser.totalChannelCount;
+    readonly hasMoreItems = this.channelBrowser.hasMoreItems;
     readonly isLoadingMore = signal(false);
-    /**
-     * Skeleton shows only while a load is genuinely in flight. An empty result
-     * once loading has settled is an empty category, not a stuck spinner — the
-     * full-list cache can legitimately filter a genre down to zero channels.
-     */
-    readonly isInitialChannelsLoading = computed(
-        () =>
-            !!this.stalkerStore.selectedCategoryId() &&
-            this.channels().length === 0 &&
-            !this.searchTerm() &&
-            (this.isFullListLoading() ||
-                this.stalkerStore.isPaginatedContentLoading())
-    );
-    /** Category is loaded but has no channels (and the user isn't searching). */
-    readonly isCategoryEmpty = computed(
-        () =>
-            !!this.stalkerStore.selectedCategoryId() &&
-            !this.searchTerm() &&
-            this.channels().length === 0 &&
-            !this.isInitialChannelsLoading()
-    );
+    readonly isInitialChannelsLoading =
+        this.channelBrowser.isInitialChannelsLoading;
+    readonly isCategoryEmpty = this.channelBrowser.isCategoryEmpty;
 
     readonly selectedChannelId = this.stalkerStore.selectedItvId;
     protected readonly normalizeStalkerEntityId = normalizeStalkerEntityId;
@@ -396,9 +307,7 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
             untracked(() => {
                 if (contentType === 'radio') {
                     this.stalkerStore.setRadioChannels([]);
-                } else if (
-                    !this.stalkerStore.itvSelectedCategoryFromCache()
-                ) {
+                } else if (!this.stalkerStore.itvSelectedCategoryFromCache()) {
                     this.stalkerStore.setItvChannels([]);
                 }
                 this.stalkerStore.setPage(0);
@@ -431,8 +340,8 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
             // store dedupes per channel id, so this is cheap on rerenders.
             if (this.supportsEpgMapping && channels.length > 0) {
                 const channelIds = channels.map((channel) => channel.id);
-                untracked(() =>
-                    void this.stalkerStore.applyMappedItvEpg(channelIds)
+                untracked(
+                    () => void this.stalkerStore.applyMappedItvEpg(channelIds)
                 );
             }
         });
@@ -558,7 +467,7 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
         const requestId = ++this.playbackRequestId;
         const channelId = normalizeStalkerEntityId(item.id);
         this.stalkerStore.setSelectedItem(item);
-        this.ensureChannelWithinRenderWindow(channelId);
+        this.channelBrowser.ensureChannelIsRendered(channelId);
 
         try {
             const isRadioMode = this.isRadioMode();
@@ -648,38 +557,8 @@ export class StalkerLiveStreamLayoutComponent implements OnDestroy {
         }
     }
 
-    /**
-     * In full-list mode the rendered list is windowed to `renderLimit`. When a
-     * channel beyond that window is selected (remote channel-up/down, numeric
-     * select), grow the window so the selection is actually in the DOM and can
-     * be highlighted/scrolled to instead of drifting off-window.
-     */
-    private ensureChannelWithinRenderWindow(channelId: string): void {
-        if (!this.isCategoryFromCache()) {
-            return;
-        }
-
-        const index = this.filteredChannels().findIndex(
-            (item) => normalizeStalkerEntityId(item.id) === channelId
-        );
-        if (index < 0 || index < this.renderLimit()) {
-            return;
-        }
-
-        const needed =
-            Math.ceil((index + 1) / FULL_LIST_RENDER_CHUNK) *
-            FULL_LIST_RENDER_CHUNK;
-        this.renderLimit.set(Math.max(this.renderLimit(), needed));
-    }
-
     loadMore() {
-        if (this.isCategoryFromCache()) {
-            // Extends the render window over the in-memory list — no request.
-            if (this.hasMoreItems()) {
-                this.renderLimit.update(
-                    (limit) => limit + FULL_LIST_RENDER_CHUNK
-                );
-            }
+        if (this.channelBrowser.growRenderWindow()) {
             return;
         }
 

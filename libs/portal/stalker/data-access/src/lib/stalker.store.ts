@@ -1,6 +1,7 @@
 import { signalStore } from '@ngrx/signals';
 import {
     withStalkerContent,
+    withStalkerContentApi,
     withStalkerEpg,
     withStalkerFavorites,
     withStalkerPlayer,
@@ -19,10 +20,10 @@ export const StalkerStore = signalStore(
     withStalkerPortal(),
     withStalkerSelection(),
     withStalkerContent(),
+    withStalkerContentApi(),
     withStalkerSeries(),
     withStalkerPlayer(),
     withStalkerFavorites(),
     withStalkerRecent(),
     withStalkerEpg()
 );
-

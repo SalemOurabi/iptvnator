@@ -1,7 +1,4 @@
-import {
-    type APIRequestContext,
-    type Page,
-} from '@playwright/test';
+import { type APIRequestContext, type Page } from '@playwright/test';
 import { setInputValue } from './e2e-helpers';
 import { expect, test } from './fixtures';
 import {
@@ -461,6 +458,24 @@ test('@stalker ITV censored category pages from the portal and hides its badge',
     const channels = page.locator('[data-test-id="channel-item"]');
     await expect(channels.first()).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => adultListRequests.length).toBeGreaterThan(0);
+
+    // Regression: searching must merge the currently loaded censored genre
+    // with the bulk cache, which intentionally excludes these channels.
+    const adultChannelName = (
+        await channels.first().locator('.channel-name').textContent()
+    )?.trim();
+    expect(adultChannelName).toBeTruthy();
+    const searchInput = page.locator('input[type="search"]');
+    await searchInput.fill(adultChannelName as string);
+    await expect(page.locator('.search-chip--status')).toHaveText(
+        'Loaded channels only'
+    );
+    await expect(
+        page
+            .locator('[data-test-id="channel-item"] .channel-name')
+            .filter({ hasText: adultChannelName as string })
+            .first()
+    ).toBeVisible({ timeout: 20_000 });
 });
 
 test('@stalker ITV falls back to page crawling on portals without get_all_channels', async ({

@@ -73,6 +73,7 @@ class MockStalkerStore {
     readonly searchPhrase = signal('');
     readonly getSelectedCategoryName = signal('All Items');
     readonly itvFullListActive = signal(false);
+    readonly itvSelectedCategoryFromCache = signal(true);
 
     setSearchPhrase = jest.fn((term: string) => this.searchPhrase.set(term));
 }
@@ -603,6 +604,19 @@ describe('WorkspaceShellFacade', () => {
 
         expect(facade.canUseSearch()).toBe(true);
         expect(facade.searchStatusLabel()).toBe('');
+    });
+
+    it('keeps loaded-only status for a censored ITV category omitted by the cache', () => {
+        stalkerStore.itvFullListActive.set(true);
+        stalkerStore.itvSelectedCategoryFromCache.set(false);
+        stalkerStore.getSelectedCategoryName.set('For adults');
+        facade.currentUrl.set('/workspace/stalker/pl-1/itv/1099?q=adult');
+        searchSync.syncSearchFromRoute();
+        TestBed.flushEffects();
+
+        expect(facade.searchStatusLabel()).toBe(
+            'WORKSPACE.SHELL.SEARCH_STATUS_LOADED_ONLY'
+        );
     });
 
     it('marks stalker radio search as loaded-only (radio always pages)', () => {

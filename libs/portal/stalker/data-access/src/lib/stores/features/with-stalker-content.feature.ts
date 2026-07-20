@@ -1,9 +1,7 @@
-import { computed, inject, resource } from '@angular/core';
+import { inject, resource } from '@angular/core';
 import {
     patchState,
     signalStoreFeature,
-    withComputed,
-    withMethods,
     withProps,
     withState,
 } from '@ngrx/signals';
@@ -21,13 +19,14 @@ import { StalkerItvCacheService } from '../../stalker-itv-cache.service';
 import { StalkerSessionService } from '../../stalker-session.service';
 import {
     ResourceState,
-    StalkerCategorySliceContract,
     StalkerContentFeatureStoreContract,
     StalkerContentType,
 } from '../stalker-store.contracts';
 import {
     executeStalkerRequest,
+    buildCategoryPatch,
     filterItvChannelsByGenre,
+    getCategoriesByType,
     toStalkerContentItem,
     toStalkerItvChannel,
 } from '../utils';
@@ -83,38 +82,6 @@ interface StalkerOrderedListResponse {
 interface StalkerContentResourceStoreContract extends StalkerContentFeatureStoreContract {
     categoryResource: ResourceState<StalkerCategoryItem[]>;
     getContentResource: ResourceState<StalkerContentItem[]>;
-}
-
-function getCategoriesByType(
-    store: StalkerCategorySliceContract,
-    contentType: StalkerContentType
-): StalkerCategoryItem[] {
-    switch (contentType) {
-        case 'vod':
-            return store.vodCategories();
-        case 'series':
-            return store.seriesCategories();
-        case 'itv':
-            return store.itvCategories();
-        case 'radio':
-            return store.radioCategories();
-    }
-}
-
-function buildCategoryPatch(
-    contentType: StalkerContentType,
-    categories: StalkerCategoryItem[]
-): Partial<StalkerContentState> {
-    switch (contentType) {
-        case 'vod':
-            return { vodCategories: categories };
-        case 'series':
-            return { seriesCategories: categories };
-        case 'itv':
-            return { itvCategories: categories };
-        case 'radio':
-            return { radioCategories: categories };
-    }
 }
 
 function buildAllCategory(
@@ -599,194 +566,6 @@ export function withStalkerContent() {
                     }),
                 };
             }
-        ),
-        withComputed((store) => {
-            const storeContext = store as typeof store &
-                StalkerContentResourceStoreContract;
-            const itvCache = inject(StalkerItvCacheService);
-
-            /**
-             * The whole portal's ITV channel list (all categories) when
-             * cached. `versionFor` establishes the reactive dependency so this
-             * recomputes when the list becomes ready or is refreshed.
-             */
-            const itvFullChannelList = computed(() => {
-                const playlist = storeContext.currentPlaylist();
-                itvCache.versionFor(playlist);
-                return itvCache.getChannels(playlist) ?? [];
-            });
-
-            return {
-                /** True when the complete ITV channel list is cached, so local search covers all channels. */
-                itvFullListActive: computed(() =>
-                    itvCache.isReady(storeContext.currentPlaylist())
-                ),
-                itvFullListLoading: computed(() =>
-                    itvCache.isLoading(storeContext.currentPlaylist())
-                ),
-                itvFullListProgress: computed(() =>
-                    itvCache.progressOf(storeContext.currentPlaylist())
-                ),
-                /** Exposes the whole portal's ITV channel list so search can span every channel. */
-                itvFullChannelList,
-                /**
-                 * True when the currently selected ITV category can be served
-                 * from the full-list cache. Censored (adult) genres are usually
-                 * excluded from `get_all_channels`, so a genre with zero cached
-                 * channels stays on the legacy paged flow.
-                 */
-                itvSelectedCategoryFromCache: computed(() => {
-                    const playlist = storeContext.currentPlaylist();
-                    if (!itvCache.isReady(playlist)) {
-                        return false;
-                    }
-
-                    const categoryId = storeContext.selectedCategoryId();
-                    if (!categoryId) {
-                        return false;
-                    }
-                    if (categoryId === '*') {
-                        return true;
-                    }
-
-                    return (
-                        filterItvChannelsByGenre(
-                            itvFullChannelList(),
-                            categoryId
-                        ).length > 0
-                    );
-                }),
-                /**
-                 * Per-genre channel counts for ITV category badges, keyed by
-                 * numeric `tv_genre_id` (mirrors the Xtream count map). Only
-                 * populated when the full list is cached. The "All" pseudo
-                 * category has id `'*'` → `Number('*')` is NaN, and a Map keys
-                 * NaN by SameValueZero, so the grand total under `NaN` makes the
-                 * "All" row show every channel. Genres with NO cached channels
-                 * get no entry at all: adult genres are excluded from
-                 * `get_all_channels` (with or without a `censored` flag from
-                 * `get_genres`), so their real count is unknown and the badge
-                 * is omitted rather than showing a misleading "0".
-                 */
-                itvCategoryItemCounts: computed(() => {
-                    const counts = new Map<number, number>();
-                    const channels = itvFullChannelList();
-                    for (const channel of channels) {
-                        const genreId = Number(channel.tv_genre_id);
-                        if (!Number.isNaN(genreId)) {
-                            counts.set(
-                                genreId,
-                                (counts.get(genreId) ?? 0) + 1
-                            );
-                        }
-                    }
-                    counts.set(Number.NaN, channels.length);
-                    return counts;
-                }),
-                getTotalPages: computed(() =>
-                    Math.ceil(store.totalCount() / storeContext.limit())
-                ),
-                getSelectedCategory: computed(() => {
-                    const categoryId = storeContext.selectedCategoryId();
-                    if (!categoryId) {
-                        return {
-                            id: 0,
-                            category_name: 'All Items',
-                            type: storeContext.selectedContentType(),
-                        };
-                    }
-
-                    const contentType = storeContext.selectedContentType();
-                    const categories = getCategoriesByType(store, contentType);
-
-                    return (
-                        categories.find(
-                            (category) =>
-                                String(category.category_id) ===
-                                String(categoryId)
-                        ) || {
-                            category_id: categoryId,
-                            category_name: '',
-                            type: contentType,
-                        }
-                    );
-                }),
-                getSelectedCategoryName: computed(() => {
-                    const selectedCategoryId =
-                        storeContext.selectedCategoryId();
-                    if (!selectedCategoryId) {
-                        return '';
-                    }
-
-                    const category = getCategoriesByType(
-                        store,
-                        storeContext.selectedContentType()
-                    ).find(
-                        (item) =>
-                            String(item.category_id) ===
-                            String(selectedCategoryId)
-                    );
-
-                    return category?.category_name ?? '';
-                }),
-                getPaginatedContent: computed(() => store.paginatedContent()),
-                isPaginatedContentLoading: computed(() =>
-                    storeContext.getContentResource.isLoading()
-                ),
-                isPaginatedContentFailed: computed(() => store.contentError()),
-                getCategoryResource: computed(() =>
-                    getCategoriesByType(
-                        store,
-                        storeContext.selectedContentType()
-                    )
-                ),
-                isCategoryResourceLoading: computed(() =>
-                    storeContext.categoryResource.isLoading()
-                ),
-                isCategoryResourceFailed: computed(() => store.categoryError()),
-            };
-        }),
-        withMethods((store) => {
-            const storeContext = store as typeof store &
-                StalkerContentResourceStoreContract;
-            const itvCache = inject(StalkerItvCacheService);
-
-            return {
-            /**
-             * Kicks off the full ITV channel list load as soon as the Live TV
-             * section is entered (instead of waiting for the first category
-             * click), so the all-channels view and category count badges are
-             * available immediately. Safe to call repeatedly — the cache
-             * de-duplicates in-flight loads and memoizes unsupported portals.
-             */
-            preloadItvChannels(): void {
-                void itvCache.ensureLoaded(storeContext.currentPlaylist());
-            },
-            async refreshItvChannels(): Promise<void> {
-                await itvCache.refresh(storeContext.currentPlaylist());
-            },
-            setCategories(
-                type: StalkerContentType,
-                categories: StalkerCategoryItem[]
-            ) {
-                patchState(store, buildCategoryPatch(type, categories));
-            },
-            resetCategories() {
-                patchState(store, {
-                    vodCategories: [],
-                    seriesCategories: [],
-                    itvCategories: [],
-                    radioCategories: [],
-                    categoryError: null,
-                });
-            },
-            setItvChannels(channels: StalkerItvChannel[]) {
-                patchState(store, { itvChannels: channels });
-            },
-            setRadioChannels(channels: StalkerItvChannel[]) {
-                patchState(store, { radioChannels: channels });
-            },
-            };
-        })
+        )
     );
 }
